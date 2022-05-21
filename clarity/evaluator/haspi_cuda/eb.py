@@ -1,6 +1,5 @@
-import numpy as np
+import cupy as cp
 from scipy.signal import resample_poly, cheby2, lfilter, butter, group_delay, correlate
-from numba import jit
 
 
 def EarModel(x, xsamp, y, ysamp, HL, itype, Level1):
@@ -99,21 +98,21 @@ def EarModel(x, xsamp, y, ysamp, HL, itype, Level1):
 
     # Initialize storage
     # Reference and processed envelopes and BM motion
-    xdB = np.zeros((nchan, nsamp))
-    ydB = np.zeros((nchan, nsamp))
+    xdB = cp.zeros((nchan, nsamp))
+    ydB = cp.zeros((nchan, nsamp))
 
     # Reference and processed average spectral values
-    xave = np.zeros(nchan)
-    yave = np.zeros(nchan)  # Processed
-    xcave = np.zeros(nchan)  # Reference control
-    ycave = np.zeros(nchan)  # Processed control
+    xave = cp.zeros(nchan)
+    yave = cp.zeros(nchan)  # Processed
+    xcave = cp.zeros(nchan)  # Reference control
+    ycave = cp.zeros(nchan)  # Processed control
 
     # Filter bandwidths adjusted for intensity
-    BWx = np.zeros(nchan)
-    BWy = np.zeros(nchan)
+    BWx = cp.zeros(nchan)
+    BWy = cp.zeros(nchan)
 
-    xb = np.zeros((nchan, nsamp))
-    yb = np.zeros((nchan, nsamp))
+    xb = cp.zeros((nchan, nsamp))
+    yb = cp.zeros((nchan, nsamp))
 
     # Loop over each filter in the auditory filter bank
     for n in range(nchan):
@@ -128,10 +127,10 @@ def EarModel(x, xsamp, y, ysamp, HL, itype, Level1):
         xenv, xbm, yenv, ybm = GammatoneBM(xmid, BWx[n], ymid, BWy[n], fsamp, cfreq[n])
 
         # RMS levels of the ref and output envelopes for linear metric
-        xave[n] = np.sqrt(np.mean(xenv ** 2))
-        yave[n] = np.sqrt(np.mean(yenv ** 2))
-        xcave[n] = np.sqrt(np.mean(xcontrol ** 2))
-        ycave[n] = np.sqrt(np.mean(ycontrol ** 2))
+        xave[n] = cp.sqrt(cp.mean(xenv ** 2))
+        yave[n] = cp.sqrt(cp.mean(yenv ** 2))
+        xcave[n] = cp.sqrt(cp.mean(xcontrol ** 2))
+        ycave[n] = cp.sqrt(cp.mean(ycontrol ** 2))
 
         # Cochlear compression for the signal envelopes and BM motion
         xc, xb[n] = EnvCompressBM(xenv, xbm, xcontrol, attnOHCx[n], lowkneex[n], CRx[n], fsamp, Level1)
@@ -202,8 +201,8 @@ def CenterFreq(nchan, shift=None):
         A = 165.4
         a = 2.1  # shift specified as a fraction of the total length
         # Locations of the low and high frequencies on the BM between 0 and 1
-        xLow = (1 / a) * np.log10(k + (lowFreq / A))
-        xHigh = (1 / a) * np.log10(k + (highFreq / A))
+        xLow = (1 / a) * cp.log10(k + (lowFreq / A))
+        xHigh = (1 / a) * cp.log10(k + (highFreq / A))
         # Shift the locations
         xLow = xLow * (1 + shift)
         xHigh = xHigh * (1 + shift)
@@ -213,11 +212,11 @@ def CenterFreq(nchan, shift=None):
 
     # All of the following expressions are derived in Apple TR #35, "An Efficient Implementation of the Patterson-Holdsworth Cochlear
     # Filter Bank" by Malcolm Slaney.
-    cf = -(EarQ * minBW) + np.exp(
-        np.arange(1, nchan) * (-np.log(highFreq + EarQ * minBW) + np.log(lowFreq + EarQ * minBW)) / (nchan - 1)) * (
+    cf = -(EarQ * minBW) + cp.exp(
+        cp.arange(1, nchan) * (-cp.log(highFreq + EarQ * minBW) + cp.log(lowFreq + EarQ * minBW)) / (nchan - 1)) * (
                      highFreq + EarQ * minBW)
-    cf = np.insert(cf, 0, highFreq)  # Last center frequency is set to highFreq
-    cf = np.flip(cf)
+    cf = cp.insert(cf, 0, highFreq)  # Last center frequency is set to highFreq
+    cf = cp.flip(cf)
     return cf
 
 
@@ -252,14 +251,14 @@ def LossParameters(HL, cfreq):
     # Interpolation to give the loss at the gammatone center frequencies
     # Use linear interpolation in dB. The interpolation assumes that  cfreq[1] < aud[1] and cfreq[nfilt] > aud[6]
     nfilt = len(cfreq)
-    fv = np.insert(aud, [0, len(aud)], [cfreq[0], cfreq[-1]])
+    fv = cp.insert(aud, [0, len(aud)], [cfreq[0], cfreq[-1]])
 
     # Interpolated gain in dB
-    loss = np.interp(cfreq, fv, np.insert(HL, [0, len(HL)], [HL[0], HL[-1]]))
-    loss = np.maximum(loss, 0);  # Make sure there are no negative losses
+    loss = cp.interp(cfreq, fv, cp.insert(HL, [0, len(HL)], [HL[0], HL[-1]]))
+    loss = cp.maximum(loss, 0);  # Make sure there are no negative losses
 
     # Compression ratio changes linearly with ERB rate from 1.25:1 in the 80-Hz frequency band to 3.5:1 in the 8-kHz frequency band
-    CR = 1.25 + 2.25 * np.arange(nfilt) / (nfilt - 1)
+    CR = 1.25 + 2.25 * cp.arange(nfilt) / (nfilt - 1)
 
     # Maximum OHC sensitivity loss depends on the compression ratio.
     # The compression I/O curves assume linear below 30 and above 100 dB SPL in normal ears.
@@ -268,14 +267,14 @@ def LossParameters(HL, cfreq):
 
     # Apportion the loss in dB to the outer and inner hair cells based on the data of Moore et al (1999), JASA 106, 2761-2778.
     # Reduce the CR towards 1:1 in proportion to the OHC loss.
-    attnOHC = 0.8 * np.copy(loss)
-    attnIHC = 0.2 * np.copy(loss)
+    attnOHC = 0.8 * cp.copy(loss)
+    attnIHC = 0.2 * cp.copy(loss)
 
     attnOHC[loss >= thrOHC] = 0.8 * thrOHC[loss >= thrOHC]
     attnIHC[loss >= thrOHC] = 0.2 * thrOHC[loss >= thrOHC] + (loss[loss >= thrOHC] - thrOHC[loss >= thrOHC])
 
     # Adjust the OHC bandwidth in proportion to the OHC loss
-    BW = np.ones(nfilt)
+    BW = cp.ones(nfilt)
     BW = BW + (attnOHC / 50.0) + 2.0 * (attnOHC / 50.0) ** 6
 
     # Compute the compression lower kneepoint and compression ratio
@@ -319,8 +318,8 @@ def Resamp24kHz(x, fsampx):
         y = resample_poly(x, fy, fx)
 
         # Match the RMS level of the resampled signal to that of the input
-        xRMS = np.sqrt(np.mean(x ** 2))
-        yRMS = np.sqrt(np.mean(y ** 2))
+        xRMS = cp.sqrt(cp.mean(x ** 2))
+        yRMS = cp.sqrt(cp.mean(y ** 2))
         y = (xRMS / yRMS) * y
 
     else:
@@ -343,8 +342,8 @@ def Resamp24kHz(x, fsampx):
         yfilt = lfilter(by, ay, y, axis=0)
 
         # Compute the input and output RMS levels within the 21 kHz bandwidth and match the output to the input
-        xRMS = np.sqrt(np.mean(xfilt ** 2))
-        yRMS = np.sqrt(np.mean(yfilt ** 2))
+        xRMS = cp.sqrt(cp.mean(xfilt ** 2))
+        yRMS = cp.sqrt(cp.mean(yfilt ** 2))
         y = (xRMS / yRMS) * y
 
     return y, fsamp
@@ -378,9 +377,9 @@ def InputAlign(x, y):
     nsamp = min(nx, ny)
 
     # Determine the delay of the output relative to the reference
-    xy = correlate(x[:nsamp] - np.mean(x[:nsamp]), y[:nsamp] - np.mean(y[:nsamp]),
+    xy = correlate(x[:nsamp] - cp.mean(x[:nsamp]), y[:nsamp] - cp.mean(y[:nsamp]),
                    "full")  # Matlab code uses xcov thus the subtraction of mean
-    index = np.argmax(np.abs(xy))
+    index = cp.argmax(cp.abs(xy))
     delay = nsamp - index - 1
 
     # Back up 2 msec to allow for dispersion
@@ -390,17 +389,17 @@ def InputAlign(x, y):
     # Align the output with the reference allowing for the dispersion
     if delay > 0:
         # Output delayed relative to the reference
-        y = np.concatenate((y[delay:ny], np.zeros(delay)))
+        y = cp.concatenate((y[delay:ny], cp.zeros(delay)))
     else:
         # Output advanced relative to the reference
-        y = np.concatenate((np.zeros(-delay), y[:ny + delay]))
+        y = cp.concatenate((cp.zeros(-delay), y[:ny + delay]))
 
     # Find the start and end of the noiseless reference sequence
-    xabs = np.abs(x)
-    xmax = np.max(xabs)
+    xabs = cp.abs(x)
+    xmax = cp.max(xabs)
     xthr = 0.001 * xmax  # Zero detection threshold
 
-    above_threshold = np.where(xabs > xthr)[0]
+    above_threshold = cp.where(xabs > xthr)[0]
     nx0 = above_threshold[0]
     nx1 = above_threshold[-1]
 
@@ -495,9 +494,9 @@ def GammatoneBM(x, BWx, y, BWy, fs, cf):
 
     ## Filter the first signal
     # Initialize the filter coefficients
-    tpt = 2 * np.pi / fs
+    tpt = 2 * cp.pi / fs
     tptBW = BWx * tpt * ERB * 1.019
-    a = np.exp(-tptBW)
+    a = cp.exp(-tptBW)
     a1 = 4.0 * a
     a2 = -6.0 * a * a
     a3 = 4.0 * a * a * a
@@ -507,7 +506,7 @@ def GammatoneBM(x, BWx, y, BWy, fs, cf):
 
     # Initialize the complex demodulation
     npts = len(x)
-    sincf, coscf = GammatoneBW_demodulation(npts, tpt, cf, np.zeros(npts), np.zeros(npts))
+    sincf, coscf = GammatoneBW_demodulation(npts, tpt, cf, cp.zeros(npts), cp.zeros(npts))
 
     # Filter the real and imaginary parts of the signal
     ureal = lfilter([1, a1, a5], [1, -a1, -a2, -a3, -a4], x * coscf)
@@ -515,11 +514,11 @@ def GammatoneBM(x, BWx, y, BWy, fs, cf):
 
     # Extract the BM velocity and the envelope
     BMx = gain * (ureal * coscf + uimag * sincf)
-    envx = gain * np.sqrt(ureal * ureal + uimag * uimag)
+    envx = gain * cp.sqrt(ureal * ureal + uimag * uimag)
 
     ## Filter the second signal using the existing cosine and sine sequences
     tptBW = BWy * tpt * ERB * 1.019
-    a = np.exp(-tptBW)
+    a = cp.exp(-tptBW)
     a1 = 4.0 * a
     a2 = -6.0 * a * a
     a3 = 4.0 * a * a * a
@@ -533,15 +532,15 @@ def GammatoneBM(x, BWx, y, BWy, fs, cf):
 
     # Extract the BM velocity and the envelope
     BMy = gain * (ureal * coscf + uimag * sincf)
-    envy = gain * np.sqrt(ureal * ureal + uimag * uimag)
+    envy = gain * cp.sqrt(ureal * ureal + uimag * uimag)
 
     return envx, BMx, envy, BMy
 
 
-@jit(nopython=True)
+
 def GammatoneBW_demodulation(npts, tpt, cf, coscf, sincf):
-    cn = np.cos(tpt * cf)
-    sn = np.sin(tpt * cf)
+    cn = cp.cos(tpt * cf)
+    sn = cp.sin(tpt * cf)
     cold = 1
     sold = 0
     coscf[0] = cold
@@ -575,8 +574,8 @@ def BWadjust(control, BWmin, BWmax, Level1):
     '''
 
     # Compute the control signal level
-    cRMS = np.sqrt(np.mean(control ** 2))
-    cdB = 20 * np.log10(cRMS) + Level1
+    cRMS = cp.sqrt(cp.mean(control ** 2))
+    cdB = 20 * cp.log10(cRMS) + Level1
 
     # Adjust the auditory filter bandwidth
     if cdB < 50:
@@ -629,10 +628,10 @@ def EnvCompressBM(envsig, bm, control, attnOHC, thrLow, CR, fsamp, Level1):
 
     # Convert the control envelope to dB SPL
     small = 1e-30
-    logenv = np.maximum(control, small)
-    logenv = Level1 + 20 * np.log10(logenv)
-    logenv = np.minimum(logenv, thrHigh)  # Clip signal levels above the upper threshold
-    logenv = np.maximum(logenv, thrLow)  # Clip signal at the lower threshold
+    logenv = cp.maximum(control, small)
+    logenv = Level1 + 20 * cp.log10(logenv)
+    logenv = cp.minimum(logenv, thrHigh)  # Clip signal levels above the upper threshold
+    logenv = cp.maximum(logenv, thrLow)  # Clip signal at the lower threshold
 
     # Compute the compression gain in dB
     gain = -attnOHC - (logenv - thrLow) * (1 - (1 / CR))
@@ -677,16 +676,16 @@ def EnvAlign(x, y):
     lags = min(lags, npts)
 
     xy = correlate(x, y, "full")
-    location = np.argmax(xy[npts - lags:npts + lags])  # Limit the range in which
+    location = cp.argmax(xy[npts - lags:npts + lags])  # Limit the range in which
     delay = lags - location - 1
 
     # Time shift the output sequence
     if delay > 0:
         # Output delayed relative to the reference
-        y = np.concatenate((y[delay:npts], np.zeros(delay)))
+        y = cp.concatenate((y[delay:npts], cp.zeros(delay)))
     elif delay < 0:
         # Output advanced relative to the reference
-        y = np.concatenate((np.zeros(-delay), y[:npts + delay]))
+        y = cp.concatenate((cp.zeros(-delay), y[:npts + delay]))
 
     return y
 
@@ -713,8 +712,8 @@ def EnvSL(env, bm, attnIHC, Level1):
     '''
     # Convert the envelope to dB SL
     small = 1e-30
-    y = Level1 - attnIHC + 20 * np.log10(env + small)
-    y = np.maximum(y, 0)
+    y = Level1 - attnIHC + 20 * cp.log10(env + small)
+    y = cp.maximum(y, 0)
 
     # Convert the linear BM motion to have a dB SL envelope
     gain = (y + small) / (env + small)
@@ -723,7 +722,7 @@ def EnvSL(env, bm, attnIHC, Level1):
     return y, b
 
 
-@jit(nopython=True)
+
 def IHCadapt(xdB, xBM, delta, fsamp):
     '''
     Function to provide inner hair cell (IHC) adaptation. The adaptation is
@@ -783,8 +782,8 @@ def IHCadapt(xdB, xBM, delta, fsamp):
 
     # Initalize the outputs and state of the equivalent circuit
     nsamp = len(xdB)
-    gain = np.ones_like(xdB)  # Gain vector to apply to the BM motion, default is 1
-    ydB = np.zeros_like(xdB)
+    gain = cp.ones_like(xdB)  # Gain vector to apply to the BM motion, default is 1
+    ydB = cp.zeros_like(xdB)
     V1 = 0
     V2 = 0
     small = 1e-30
@@ -800,7 +799,7 @@ def IHCadapt(xdB, xBM, delta, fsamp):
         out = (V0 - V1) * R1inv
         ydB[n] = out
 
-    ydB = np.maximum(ydB, 0)
+    ydB = cp.maximum(ydB, 0)
     gain = (ydB + small) / (xdB + small)
 
     yBM = gain * xBM
@@ -827,7 +826,7 @@ def BMaddnoise(x, thr, Level1):
     '''
     gn = 10 ** ((thr - Level1) / 20)  # Linear gain for the noise
 
-    rng = np.random.default_rng()
+    rng = cp.random.default_rng()
     noise = gn * rng.standard_normal(x.shape)  # Gaussian RMS=1, then attenuated
     y = x + noise
 
@@ -862,9 +861,9 @@ def GroupDelayComp(xenv, BW, cfreq, fsamp):
     ERB = minBW + (cfreq / earQ)
 
     # Initialize the gamatone filter coefficients
-    tpt = 2 * np.pi / fsamp
+    tpt = 2 * cp.pi / fsamp
     tptBW = tpt * 1.019 * BW * ERB
-    a = np.exp(-tptBW)
+    a = cp.exp(-tptBW)
     a1 = 4.0 * a
     a2 = -6.0 * a * a
     a3 = 4.0 * a * a * a
@@ -872,23 +871,23 @@ def GroupDelayComp(xenv, BW, cfreq, fsamp):
     a5 = 4.0 * a * a
 
     # Compute the group delay in samples at fsamp for each filter
-    gd = np.zeros(nchan)
+    gd = cp.zeros(nchan)
     for n in range(nchan):
         _, gd[n] = group_delay(([1, a1[n], a5[n]], [1, -a1[n], -a2[n], -a3[n], -a4[n]]), 1)
-    gd = np.round(gd).astype('int')  # convert to integer samples
+    gd = cp.round(gd).astype('int')  # convert to integer samples
 
     # Compute the delay correlation
-    gmin = np.min(gd)
+    gmin = cp.min(gd)
     gd = gd - gmin  # Remove the minimum delay from all the over values
-    gmax = np.max(gd)
+    gmax = cp.max(gd)
     correct = gmax - gd  # Samples delay needed to add to give alignment
 
     # Add delay correction to each frequency band
-    yenv = np.zeros(xenv.shape)
+    yenv = cp.zeros(xenv.shape)
     for n in range(nchan):
         r = xenv[n]
         npts = len(r)
-        yenv[n] = np.concatenate((np.zeros(correct[n]), r[:npts - correct[n]]))
+        yenv[n] = cp.concatenate((cp.zeros(correct[n]), r[:npts - correct[n]]))
 
     return yenv
 
@@ -925,19 +924,19 @@ def aveSL(env, control, attnOHC, thrLow, CR, attnIHC, Level1):
 
     # Convert the control to dB SPL
     small = 1e-30
-    logenv = np.maximum(control, small)
-    logenv = Level1 + 20 * np.log10(logenv)
-    logenv = np.minimum(logenv, thrHigh)
-    logenv = np.maximum(logenv, thrLow)
+    logenv = cp.maximum(control, small)
+    logenv = Level1 + 20 * cp.log10(logenv)
+    logenv = cp.minimum(logenv, thrHigh)
+    logenv = cp.maximum(logenv, thrLow)
 
     # Compute compression gain in dB
     gain = -attnOHC - (logenv - thrLow) * (1 - (1 / CR))
 
     # Convert the signal envelope to dB SPL
-    logenv = np.maximum(env, small)
-    logenv = Level1 + 20 * np.log10(logenv)
-    logenv = np.maximum(logenv, 0)
+    logenv = cp.maximum(env, small)
+    logenv = Level1 + 20 * cp.log10(logenv)
+    logenv = cp.maximum(logenv, 0)
     xdB = logenv + gain - attnIHC
-    xdB = np.maximum(xdB, 0)
+    xdB = cp.maximum(xdB, 0)
 
     return xdB
