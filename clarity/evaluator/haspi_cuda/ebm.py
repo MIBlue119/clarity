@@ -1,6 +1,6 @@
-import numpy as np
+import cupy as cp
 from math import floor
-from scipy.signal import convolve2d, convolve
+from cusignal import convolve2d, convolve
 
 
 def EnvFilt(xdB, ydB, fcut, fsub, fsamp):
@@ -47,20 +47,20 @@ def EnvFilt(xdB, ydB, fcut, fsub, fsamp):
 
     # Design the FIR LP filter using a von Hann window to ensure that there are no negative envelope values
     # The MATLAB code uses the hanning() function, which returns the Hann window without the first and last zero-weighted window samples,
-    # unlike np.hann and scipy.signal.windows.hann; the code below replicates this behaviour
-    w = 0.5 * (1 - np.cos(2 * np.pi * np.arange(1, nfilt / 2 + 1) / (nfilt + 1)))
-    benv = np.concatenate((w, np.flip(w)))
-    benv = benv / np.sum(benv)
+    # unlike cp.hann and scipy.signal.windows.hann; the code below replicates this behaviour
+    w = 0.5 * (1 - cp.cos(2 * cp.pi * cp.arange(1, nfilt / 2 + 1) / (nfilt + 1)))
+    benv = cp.concatenate((w, cp.flip(w)))
+    benv = benv / cp.sum(benv)
 
     # LP filter for the envelopes at fsamp
-    xenv = convolve2d(xdB, np.expand_dims(benv, 1), 'full')  # 2D convolution
+    xenv = convolve2d(xdB, cp.expand_dims(benv, 1), 'full')  # 2D convolution
     xenv = xenv[nhalf:nhalf + nsamp, :]
-    yenv = convolve2d(ydB, np.expand_dims(benv, 1), 'full')
+    yenv = convolve2d(ydB, cp.expand_dims(benv, 1), 'full')
     yenv = yenv[nhalf:nhalf + nsamp, :]
 
     # Subsample the LP filtered envelopes
     space = floor(fsamp / fsub)
-    index = np.arange(0, nsamp, space)
+    index = cp.arange(0, nsamp, space)
     xLP = xenv[index, :]
     yLP = yenv[index, :]
 
@@ -98,19 +98,19 @@ def CepCoef(xdB, ydB, thrCep, thrNerve, nbasis):
     nbands = xdB.shape[1]
 
     # Mel cepstrum basis functions
-    freq = np.arange(0, nbasis)
-    k = np.arange(0, nbands)
-    cepm = np.zeros((nbands, nbasis))
+    freq = cp.arange(0, nbasis)
+    k = cp.arange(0, nbands)
+    cepm = cp.zeros((nbands, nbasis))
 
     for nb in range(nbasis):
-        basis = np.cos(freq[nb] * np.pi * k / (nbands - 1))
-        cepm[:, nb] = basis / np.sqrt(np.sum(basis ** 2))
+        basis = cp.cos(freq[nb] * cp.pi * k / (nbands - 1))
+        cepm[:, nb] = basis / cp.sqrt(cp.sum(basis ** 2))
 
     # Find the reference segments that lie sufficiently above the quiescent rate
     xLinear = 10 ** (xdB / 20)  # Convert envelope dB to linear (specific loudness)
-    xsum = np.sum(xLinear, 1) / nbands  # Proportional to loudness in sones
-    xsum = 20 * np.log10(xsum)  # Convert back to dB (loudness in phons)
-    index = np.where(xsum > thrCep)[0]  # Identify those segments above threshold
+    xsum = cp.sum(xLinear, 1) / nbands  # Proportional to loudness in sones
+    xsum = 20 * cp.log10(xsum)  # Convert back to dB (loudness in phons)
+    index = cp.where(xsum > thrCep)[0]  # Identify those segments above threshold
     nsamp = len(index)  # Number of segments above threshold
 
     # Exit if not enough segments above zero
@@ -132,10 +132,10 @@ def CepCoef(xdB, ydB, thrCep, thrNerve, nbasis):
     # and there is no effect of the absolute signal level in dB.
     for n in range(nbasis):
         x = xcep[:, n]
-        x = x - np.mean(x)
+        x = x - cp.mean(x)
         xcep[:, n] = x
         y = ycep[:, n]
-        y = y - np.mean(y)
+        y = y - cp.mean(y)
         ycep[:, n] = y
 
     return xcep, ycep
@@ -158,7 +158,7 @@ def AddNoise(ydB, thrdB):
     Translated from MATLAB to Python by Zuzanna Podwinska, March 2022.
     '''
     # Additive noise sequence
-    rng = np.random.default_rng()
+    rng = cp.random.default_rng()
     noise = thrdB * rng.standard_normal(ydB.shape)  # Gaussian noise with RMS=1, then scaled
 
     # Add the noise to the signal envelope
@@ -207,9 +207,9 @@ def ModFilt(Xenv, Yenv, fsub):
 
     # Modulation filter band cf and edges, 10 bands
     # Band spacing uses the factor of 1.6 used by Dau
-    cf = np.array([2, 6, 10, 16, 25, 40, 64, 100, 160, 256])  # Band center frequencies
+    cf = cp.array([2, 6, 10, 16, 25, 40, 64, 100, 160, 256])  # Band center frequencies
     nmod = len(cf)
-    edge = np.zeros(nmod + 1)
+    edge = cp.zeros(nmod + 1)
     edge[0:3] = [0, 4, 8]
     for k in range(3, nmod + 1):
         edge[k] = (cf[k - 1] ** 2) / edge[k - 1]
@@ -225,35 +225,35 @@ def ModFilt(Xenv, Yenv, fsub):
     # and t0=0.33 corresponds to Q=2 (Dau et al 1997a). Moritz et al. (2015) used t0=0.29. General relation Q=6.25*t0,
     # compromise with t0=0.24 which gives Q=1.5
     t0 = 0.24  # Filter length in seconds for the lowest modulation frequency band
-    t = np.zeros(nmod)
+    t = cp.zeros(nmod)
     t[0] = t0
     t[1] = t0
     t[2:nmod] = t0 * cf[2] / cf[2:nmod]  # Constant-Q filters above 10 Hz
-    nfir = 2 * np.floor(t * fsub / 2)  # Force even filter lengths in samples
+    nfir = 2 * cp.floor(t * fsub / 2)  # Force even filter lengths in samples
     nhalf = nfir / 2
 
     # Design the family of lowpass windows
     b = []  # Filter coefficients, one filter impulse response per list element
     for k in range(nmod):
-        bk = np.hanning(nfir[k] + 1)
-        bk = bk / np.sum(bk)
+        bk = cp.hanning(nfir[k] + 1)
+        bk = bk / cp.sum(bk)
         b.append(bk)
 
     # Pre-compute the cosine and sine arrays
     co = []  # cosine array, one frequency per list element
     si = []  # sine array, one frequency per list element
-    n = np.arange(1, nsamp + 1)
+    n = cp.arange(1, nsamp + 1)
     for k in range(nmod):
         if k == 0:
             co.append(1)
             si.append(0)
         else:
-            co.append(np.sqrt(2) * np.cos(np.pi * n * cf[k] / fNyq))
-            si.append(np.sqrt(2) * np.sin(np.pi * n * cf[k] / fNyq))
+            co.append(cp.sqrt(2) * cp.cos(cp.pi * n * cf[k] / fNyq))
+            si.append(cp.sqrt(2) * cp.sin(cp.pi * n * cf[k] / fNyq))
 
     # Convolve the input and output envelopes with the modulation filters
-    Xmod = np.zeros((nchan, nmod, nsamp))
-    Ymod = np.zeros((nchan, nmod, nsamp))
+    Xmod = cp.zeros((nchan, nmod, nsamp))
+    Ymod = cp.zeros((nchan, nmod, nsamp))
     for k in range(nmod):  # Loop over the modulation filters
         bk = b[k]  # Extract the lowpass filter impulse response
         nh = int(nhalf[k])  # Transient duration for the filter
@@ -264,14 +264,14 @@ def ModFilt(Xenv, Yenv, fsub):
             x = Xenv[:, m]  # Extract the frequency or cepstral coefficient band
             u = convolve((x * c - 1j * x * s), bk)  # Complex demodulation, then LP filter
             u = u[nh:nh + nsamp]  # Truncate the filter transients
-            xfilt = np.real(u) * c - np.imag(u) * s  # Modulate back up to the carrier freq
+            xfilt = cp.real(u) * c - cp.imag(u) * s  # Modulate back up to the carrier freq
             Xmod[m, k, :] = xfilt  # Save the filtered signal
 
             # Processed signal
             y = Yenv[:, m]  # Extract the frequency or cepstral coefficient band
             v = convolve((y * c - 1j * y * s), bk)  # Complex demodulation, then LP filter
             v = v[nh:nh + nsamp]  # Truncate the filter transients
-            yfilt = np.real(v) * c - np.imag(v) * s  # Modulate back up to the carrier freq
+            yfilt = cp.real(v) * c - cp.imag(v) * s  # Modulate back up to the carrier freq
             Ymod[m, k, :] = yfilt  # Save the filtered signal
 
     return Xmod, Ymod, cf
@@ -307,23 +307,23 @@ def ModCorr(Xmod, Ymod):
     small = 1e-30  # Zero threshold
 
     # Compute the cross-covariance matrix
-    CM = np.zeros((nchan, nmod))
+    CM = cp.zeros((nchan, nmod))
     for m in range(nmod):
         for j in range(nchan):
             # Index j gives the input reference band
             xj = Xmod[j, m]  # Input freq band j, modulation freq m
-            xj = xj - np.mean(xj)
-            xsum = np.sum(xj ** 2)
+            xj = xj - cp.mean(xj)
+            xsum = cp.sum(xj ** 2)
             # Processed signal band
             yj = Ymod[j, m]  # Processed freq band j, modulation freq m
-            yj = yj - np.mean(yj)
-            ysum = np.sum(yj ** 2)
+            yj = yj - cp.mean(yj)
+            ysum = cp.sum(yj ** 2)
             # Cross-correlate the reference and processed signals
             if (xsum < small) or (ysum < small):
                 CM[j, m] = 0
             else:
-                CM[j, m] = np.abs(np.sum(xj * yj)) / np.sqrt(xsum * ysum)
+                CM[j, m] = cp.abs(cp.sum(xj * yj)) / cp.sqrt(xsum * ysum)
 
-    aveCM = np.mean(CM[1:6], 0)
+    aveCM = cp.mean(CM[1:6], 0)
 
     return aveCM
