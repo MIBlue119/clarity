@@ -1,5 +1,5 @@
 import cupy as cp
-from scipy.signal import resample_poly, cheby2, lfilter, butter, group_delay, correlate
+from cusignal import resample_poly, cheby2, lfilter, butter, group_delay, correlate
 
 
 def EarModel(x, xsamp, y, ysamp, HL, itype, Level1):
