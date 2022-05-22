@@ -1,6 +1,7 @@
 import cupy as cp
-from cusignal import resample_poly, cheby2, lfilter, butter, group_delay, correlate
-
+import numpy as np 
+from cusignal import resample_poly, correlate
+from scipy.signal import cheby2,butter,group_delay,lfilter
 
 def EarModel(x, xsamp, y, ysamp, HL, itype, Level1):
     '''
@@ -215,8 +216,8 @@ def CenterFreq(nchan, shift=None):
     cf = -(EarQ * minBW) + cp.exp(
         cp.arange(1, nchan) * (-cp.log(highFreq + EarQ * minBW) + cp.log(lowFreq + EarQ * minBW)) / (nchan - 1)) * (
                      highFreq + EarQ * minBW)
-    cf = cp.insert(cf, 0, highFreq)  # Last center frequency is set to highFreq
-    cf = cp.flip(cf)
+    cf_np = np.insert(cp.asnumpy(cf), 0, cp.asnumpy(highFreq))  # Last center frequency is set to highFreq
+    cf = cp.flip(cp.asarray(cf_np))
     return cf
 
 
@@ -251,11 +252,14 @@ def LossParameters(HL, cfreq):
     # Interpolation to give the loss at the gammatone center frequencies
     # Use linear interpolation in dB. The interpolation assumes that  cfreq[1] < aud[1] and cfreq[nfilt] > aud[6]
     nfilt = len(cfreq)
-    fv = cp.insert(aud, [0, len(aud)], [cfreq[0], cfreq[-1]])
+    fv_np = np.insert(cp.asnumpy(aud), [0, len(aud)], [cp.asnumpy(cfreq[0]), cp.asnumpy(cfreq[-1])])
+    fv = cp.asarray(fv_np)
 
     # Interpolated gain in dB
-    loss = cp.interp(cfreq, fv, cp.insert(HL, [0, len(HL)], [HL[0], HL[-1]]))
-    loss = cp.maximum(loss, 0);  # Make sure there are no negative losses
+    HL_computation_np = np.insert(cp.asnumpy(HL), [0, len(HL)], [cp.asnumpy(HL[0]), cp.asnumpy(HL[-1])])
+    #HL_computation = cp.asarray(HL_computation_np)
+    loss_np = np.interp(cp.asnumpy(cfreq), cp.asnumpy(fv),HL_computation_np)
+    loss = cp.maximum(cp.asarray(loss_np), 0);  # Make sure there are no negative losses
 
     # Compression ratio changes linearly with ERB rate from 1.25:1 in the 80-Hz frequency band to 3.5:1 in the 8-kHz frequency band
     CR = 1.25 + 2.25 * cp.arange(nfilt) / (nfilt - 1)
@@ -325,6 +329,7 @@ def Resamp24kHz(x, fsampx):
     else:
         # Resample for the input rate higher than the output
         y = resample_poly(x, fy, fx)
+        y = cp.asnumpy(y)
 
         # Reduce the input signal bandwidth to 21 kHz (-10.5 to +10.5 kHz)
         # The power equalization is designed to match the signal intensities
@@ -342,9 +347,10 @@ def Resamp24kHz(x, fsampx):
         yfilt = lfilter(by, ay, y, axis=0)
 
         # Compute the input and output RMS levels within the 21 kHz bandwidth and match the output to the input
-        xRMS = cp.sqrt(cp.mean(xfilt ** 2))
-        yRMS = cp.sqrt(cp.mean(yfilt ** 2))
+        xRMS = np.sqrt(np.mean(xfilt ** 2))
+        yRMS = np.sqrt(np.mean(yfilt ** 2))
         y = (xRMS / yRMS) * y
+        y= cp.asarray(y)
 
     return y, fsamp
 
@@ -384,7 +390,9 @@ def InputAlign(x, y):
 
     # Back up 2 msec to allow for dispersion
     fsamp = 24000  # Cochlear model input sampling rate in Hz
-    delay = round(delay - 2 * fsamp / 1000)  # Back up 2 ms
+    delay = round(cp.asnumpy(delay) - 2 * cp.asnumpy(fsamp) / 1000)  # Back up 2 ms
+    delay= int(cp.asarray(delay))
+    #import pdb; pdb.set_trace()
 
     # Align the output with the reference allowing for the dispersion
     if delay > 0:
@@ -435,14 +443,14 @@ def MiddleEar(x, fsamp):
     bLP, aLP = butter(1, 5000 / (0.5 * fsamp))
 
     # LP filter the input
-    y = lfilter(bLP, aLP, x)
+    y = lfilter(cp.asnumpy(bLP), cp.asnumpy(aLP), cp.asnumpy(x))
 
     # Design the 2-pole Butterworth HP using the bilinear transformation
     bHP, aHP = butter(2, 350 / (0.5 * fsamp), 'high')
 
     # HP fitler the signal
-    xout = lfilter(bHP, aHP, y)
-
+    xout = lfilter(cp.asnumpy(bHP), cp.asnumpy(aHP), cp.asnumpy(y))
+    xout = cp.asarray(xout)
     return xout
 
 
@@ -509,9 +517,11 @@ def GammatoneBM(x, BWx, y, BWy, fs, cf):
     sincf, coscf = GammatoneBW_demodulation(npts, tpt, cf, cp.zeros(npts), cp.zeros(npts))
 
     # Filter the real and imaginary parts of the signal
-    ureal = lfilter([1, a1, a5], [1, -a1, -a2, -a3, -a4], x * coscf)
-    uimag = lfilter([1, a1, a5], [1, -a1, -a2, -a3, -a4], x * sincf)
+    ureal = lfilter([1, cp.asnumpy(a1), cp.asnumpy(a5)], [1, cp.asnumpy(-a1), cp.asnumpy(-a2), cp.asnumpy(-a3), cp.asnumpy(-a4)], cp.asnumpy(x * coscf))
+    uimag = lfilter([1, cp.asnumpy(a1), cp.asnumpy(a5)], [1, cp.asnumpy(-a1), cp.asnumpy(-a2), cp.asnumpy(-a3), cp.asnumpy(-a4)], cp.asnumpy(x * sincf))
 
+    ureal = cp.asarray(ureal)
+    uimag = cp.asarray(uimag)
     # Extract the BM velocity and the envelope
     BMx = gain * (ureal * coscf + uimag * sincf)
     envx = gain * cp.sqrt(ureal * ureal + uimag * uimag)
@@ -527,8 +537,10 @@ def GammatoneBM(x, BWx, y, BWy, fs, cf):
     gain = 2.0 * (1 - a1 - a2 - a3 - a4) / (1 + a1 + a5)
 
     # Filter the real and imaginary parts of the signal
-    ureal = lfilter([1, a1, a5], [1, -a1, -a2, -a3, -a4], y * coscf)
-    uimag = lfilter([1, a1, a5], [1, -a1, -a2, -a3, -a4], y * sincf)
+    ureal = lfilter([1, cp.asnumpy(a1), cp.asnumpy(a5)], [1, cp.asnumpy(-a1), cp.asnumpy(-a2), cp.asnumpy(-a3), cp.asnumpy(-a4)], cp.asnumpy(y * coscf))
+    uimag = lfilter([1, cp.asnumpy(a1), cp.asnumpy(a5)], [1, cp.asnumpy(-a1), cp.asnumpy(-a2), cp.asnumpy(-a3), cp.asnumpy(-a4)], cp.asnumpy(y * sincf))
+    ureal = cp.asarray(ureal)
+    uimag = cp.asarray(uimag)
 
     # Extract the BM velocity and the envelope
     BMy = gain * (ureal * coscf + uimag * sincf)
@@ -640,7 +652,8 @@ def EnvCompressBM(envsig, bm, control, attnOHC, thrLow, CR, fsamp, Level1):
     gain = 10 ** (gain / 20)
     flp = 800
     b, a = butter(1, flp / (0.5 * fsamp))
-    gain = lfilter(b, a, gain)
+    gain = lfilter(cp.asnumpy(b), cp.asnumpy(a), cp.asnumpy(gain))
+    gain = cp.asarray(gain)
 
     # Apply the gain to the signals
     y = gain * envsig
@@ -678,7 +691,7 @@ def EnvAlign(x, y):
     xy = correlate(x, y, "full")
     location = cp.argmax(xy[npts - lags:npts + lags])  # Limit the range in which
     delay = lags - location - 1
-
+    delay =int(delay)
     # Time shift the output sequence
     if delay > 0:
         # Output delayed relative to the reference

@@ -1,5 +1,4 @@
-import numpy as np
-
+import cupy as cp 
 
 def GetNeuralNet():
     '''
@@ -23,7 +22,7 @@ def GetNeuralNet():
     Translated from MATLAB to Python by Zuzanna Podwinska, March 2022.
     '''
     # Set up the neural network parameters
-    NNparam = np.zeros(6)
+    NNparam = cp.zeros(6)
     NNparam[0] = 10  # Number of neurons in the input layer
     NNparam[1] = 4  # Number of neurons in the hidden layer
     NNparam[2] = 1  # Number of neurons in the output layer
@@ -33,7 +32,7 @@ def GetNeuralNet():
 
     # Input to hidden layer weights
     Whid = [
-        np.array(  # 1
+        cp.array(  # 1
             [[4.9980, -13.0590, 9.5478, -11.6760],
              [18.9793, -8.5842, -6.6974, 8.0382],
              [-37.8234, 26.9420, -6.6279, 2.6069],
@@ -46,7 +45,7 @@ def GetNeuralNet():
              [21.0595, -3.8171, 2.2084, 2.1929],
              [17.2857, 16.7562, -27.3290, 1.1543]]
         ),
-        np.array(  # 2
+        cp.array(  # 2
             [[-11.8283, -12.3466, 8.8198, 5.6027],
              [-8.3142, 6.2553, -4.1575, 13.7958],
              [27.6080, 3.3801, -7.9607, -33.7865],
@@ -59,7 +58,7 @@ def GetNeuralNet():
              [-5.0357, -2.3610, -0.3678, 31.4586],
              [20.8312, 7.8687, -28.9087, 19.4417]]
         ),
-        np.array(  # 3
+        cp.array(  # 3
             [[9.5379, 4.4994, -13.1308, 0.9024],
              [3.9544, -2.4002, 2.6777, 22.9810],
              [-30.9452, -2.2645, 15.2613, -23.8526],
@@ -72,7 +71,7 @@ def GetNeuralNet():
              [8.5857, -8.5345, -16.3236, 18.1852],
              [3.1709, -41.1078, 6.7127, 11.5747]]
         ),
-        np.array(  # 4
+        cp.array(  # 4
             [[9.3527, -13.3654, -2.1263, 5.1205],
              [9.4885, 1.9584, 21.8489, -8.0495],
              [-32.0886, 16.0934, -13.0956, -0.9466],
@@ -85,7 +84,7 @@ def GetNeuralNet():
              [7.4362, -19.8990, 12.3480, -6.7305],
              [6.3910, 7.1670, 11.7919, -38.1848]]
         ),
-        np.array(  # 5
+        cp.array(  # 5
             [[-12.0509, 8.7151, 12.9841, -12.7563],
              [-8.0669, 18.9493, -9.1899, 7.8737],
              [20.6577, -35.4767, -18.5397, 2.8544],
@@ -98,7 +97,7 @@ def GetNeuralNet():
              [-30.5649, 10.5307, -11.8234, 0.4014],
              [-9.4186, 15.6892, -44.0505, 1.4371]]
         ),
-        np.array(  # 6
+        cp.array(  # 6
             [[8.9905, -16.4000, 13.3395, 8.9068],
              [11.0010, 11.3797, 14.8502, -14.2547],
              [-23.8174, 4.4221, -34.6896, -9.9423],
@@ -111,7 +110,7 @@ def GetNeuralNet():
              [6.7850, -4.3356, 18.5928, -12.0981],
              [7.4116, -2.0622, 4.7621, -40.2684]]
         ),
-        np.array(  # 7
+        cp.array(  # 7
             [[-13.2736, 9.9119, 3.4659, 2.8783],
              [0.4675, -0.8187, 0.3497, 20.7397],
              [17.4133, -27.7575, -1.4997, -23.8363],
@@ -124,7 +123,7 @@ def GetNeuralNet():
              [-15.9809, 9.4330, -10.4158, 15.9834],
              [6.1126, 0.1713, -43.7492, 14.7425]]
         ),
-        np.array(  # 8
+        cp.array(  # 8
             [[-11.6727, -15.7084, 9.9095, -7.3946],
              [4.4142, -4.4821, 10.9888, 0.0966],
              [6.4298, 25.5445, -32.7311, 4.1951],
@@ -137,7 +136,7 @@ def GetNeuralNet():
              [6.6129, -15.7791, 9.3453, 2.7809],
              [-3.6429, -0.8727, 0.2410, -0.7045]]
         ),
-        np.array(  # 9
+        cp.array(  # 9
             [[-13.9106, 3.1943, 8.7525, 7.8378],
              [4.1210, 0.4603, -7.2471, 16.2216],
              [9.3064, -3.8093, -14.4721, -34.2848],
@@ -150,7 +149,7 @@ def GetNeuralNet():
              [-11.7304, -6.5251, -4.2616, 19.8528],
              [3.2551, -35.4889, -2.2133, 6.7308]]
         ),
-        np.array(  # 10
+        cp.array(  # 10
             [[13.5754, -13.4585, 2.5816, 7.5809],
              [-9.7189, 7.6225, -3.0220, 17.7773],
              [-25.6273, 4.1225, 4.2090, -35.4511],
@@ -167,16 +166,16 @@ def GetNeuralNet():
 
     # Hidden to output layer weights
     Wout = [
-        np.array([[-0.1316, -2.5182, 1.6401, -3.2093, 1.7924]]).T,  # 1
-        np.array([[-0.1653, 1.7375, 1.5526, -3.2349, -2.2877]]).T,  # 2
-        np.array([[0.1847, -3.1987, -2.4941, 2.7106, -1.8048]]).T,  # 3
-        np.array([[0.3962, -3.2952, 3.0003, -2.2602, -2.3269]]).T,  # 4
-        np.array([[-0.0646, 1.3288, -3.4087, -2.0046, 1.8565]]).T,  # 5
-        np.array([[1.3676, -3.4129, 1.6895, -1.8913, -1.5595]]).T,  # 6
-        np.array([[0.8124, 2.7171, -3.0867, -2.3310, -2.3657]]).T,  # 7
-        np.array([[-0.2743, 1.4949, 0.7896, -4.0589, 1.1257]]).T,  # 8
-        np.array([[0.1307, 2.2788, -2.3633, -1.5073, -2.9985]]).T,  # 9
-        np.array([[0.1024, -0.9517, 2.2123, -2.4008, -3.1655]]).T  # 10
+        cp.array([[-0.1316, -2.5182, 1.6401, -3.2093, 1.7924]]).T,  # 1
+        cp.array([[-0.1653, 1.7375, 1.5526, -3.2349, -2.2877]]).T,  # 2
+        cp.array([[0.1847, -3.1987, -2.4941, 2.7106, -1.8048]]).T,  # 3
+        cp.array([[0.3962, -3.2952, 3.0003, -2.2602, -2.3269]]).T,  # 4
+        cp.array([[-0.0646, 1.3288, -3.4087, -2.0046, 1.8565]]).T,  # 5
+        cp.array([[1.3676, -3.4129, 1.6895, -1.8913, -1.5595]]).T,  # 6
+        cp.array([[0.8124, 2.7171, -3.0867, -2.3310, -2.3657]]).T,  # 7
+        cp.array([[-0.2743, 1.4949, 0.7896, -4.0589, 1.1257]]).T,  # 8
+        cp.array([[0.1307, 2.2788, -2.3633, -1.5073, -2.9985]]).T,  # 9
+        cp.array([[0.1024, -0.9517, 2.2123, -2.4008, -3.1655]]).T  # 10
     ]
 
     # Normalization factor
@@ -204,20 +203,20 @@ def NNfeedfwdEns(data, NNparam, Whid, Wout):
     '''
     # Data and network parameters
     if data.ndim == 1:
-        data = np.expand_dims(data, 0)
+        data = cp.expand_dims(data, 0)
 
     ncond = data.shape[0]  # Number of conditions in the input data
     K = len(Whid)  # Number of networks in the ensemble
 
     # Ensemble average of the predictions over the set of neural networks used for training
-    predict = np.zeros((ncond, K))
+    predict = cp.zeros((ncond, K))
     for k in range(K):
         for n in range(ncond):
             d = data[n, :]
             _, output = NNfeedforward(d, NNparam, Whid[k], Wout[k])
             predict[n, k] = output[1]
 
-    model = np.mean(predict, 1)
+    model = cp.mean(predict, 1)
 
     return model
 
@@ -248,7 +247,7 @@ def NNfeedforward(data, NNparam, Whid, Wout):
     '''
     # Correct Wout shape
     if len(Wout.shape) == 1:
-        Wout = np.expand_dims(Wout, 1)
+        Wout = cp.expand_dims(Wout, 1)
 
     # Extract parameters from the parameter array
     nx = int(NNparam[0])
@@ -259,9 +258,9 @@ def NNfeedforward(data, NNparam, Whid, Wout):
     again = float(NNparam[5])
 
     # Initialize the array storage
-    x = np.zeros(nx + 1)
-    hidden = np.zeros(nhid + 1)
-    output = np.zeros(nout + 1)
+    x = cp.zeros(nx + 1)
+    hidden = cp.zeros(nhid + 1)
+    output = cp.zeros(nout + 1)
 
     # Initialize the nodes used for constants
     x[0] = 1
@@ -274,12 +273,12 @@ def NNfeedforward(data, NNparam, Whid, Wout):
 
     # Response of the hidden layer
     for j in range(1, nhid + 1):
-        sumhid = np.sum(Whid[:, j - 1] * x)
-        hidden[j] = (again / (1 + np.exp(-beta * sumhid))) - offset
+        sumhid = cp.sum(Whid[:, j - 1] * x)
+        hidden[j] = (again / (1 + cp.exp(-beta * sumhid))) - offset
 
     # Response of the output layer
     for k in range(1, nout + 1):
-        sumout = np.sum(Wout[:, k - 1] * hidden)
-        output[k] = (again / (1 + np.exp(-beta * sumout))) - offset
+        sumout = cp.sum(Wout[:, k - 1] * hidden)
+        output[k] = (again / (1 + cp.exp(-beta * sumout))) - offset
 
     return hidden, output

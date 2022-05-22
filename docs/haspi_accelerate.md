@@ -15,3 +15,8 @@ When we try to evaluate 2500 files with haspi, it may cost half day.
 
     - `cusugnal`
       - https://github.com/rapidsai/cusignal
+
+
+- Some operations like cheby2,butter,group_delay,lfilter are not supported yet at cusignal.
+- `cu.insert` isnot implemented.
+- Issue: the adapted version is stucked. 
